@@ -1,53 +1,33 @@
-import re
-
+from fastapi import FastAPI,Path,Query,HTTPException,status
+import uvicorn
 from bs4 import BeautifulSoup
+import re 
 from aiohttp import ClientSession
 import asyncio
-from requests_html import HTMLSession, AsyncHTMLSession
-from fastapi import FastAPI, Path, Query, HTTPException, status
-from fastapi.responses import JSONResponse
+from requests_html import HTMLSession,AsyncHTMLSession
+import requests
 
-async def fetch_url_with_aiohttp(url: str) -> str:
-    async with ClientSession() as session:
-        response = await session.get(url, verify=False)
-        if response.status == 200:
-            return await  response.text(encoding="utf-8")
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-   
-   
-def fetch_url_requestes_html(url: str) -> str:
-    session = HTMLSession()
-    responce =  session.get(url)
-    if responce.status_code == 200:
-        return responce.text
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
-    
 
-url = "https://uk.wikipedia.org/wiki/Наруто"
-tag = "div"
-found_text = "Під час цього турніру на Коноху нападає Орочімару — злочинець класу S. "
+app = FastAPI()
 
-html = fetch_url_requestes_html(url)
-# html = asyncio.run(fetch_url_with_aiohttp(url))
-soup = BeautifulSoup(html, "lxml")
-text = soup.find(string=re.compile(found_text)).find_parent(tag)
+@app.get("/find/{tag}")
+def find_text(
+    tag: str = Path(..., description="div"),
+    url: str = Query(..., description="https://uk.wikipedia.org/wiki/Наруто"),
+    text: str = Query(..., description="За дванадцять років до початку основних подій серіалу демон Дев'ятихвостого Лиса (Кюбі) напав на Коноху (Селище Схованого Листа), що знаходиться в країні Вогню.")
+):
+    response = requests.get(url)
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Сторінку не вдалося завантажити.")
 
-if text:
-    print("text=", text.text)
-    print("gettext=", text.get_text())
-else:
-    print("not found")
+    sypchik = BeautifulSoup(response.text, "html.parser")
+    symbols = sypchik.find_all(tag)
 
-print(html)
-    
-    
-# html = asyncio.run(fetch_url_with_aiohttp(url))
+    for symbol in symbols:
+        full_text = symbol.get_text(strip=True)
+        if re.search(re.escape(text), full_text):
+            print(f"Текст: {full_text}")
+            return {"found": full_text}
 
-# strings = html.xpath(f'//{tag}[contains(., "{found_text})]//text()')
-
-# if text:
-#     text = "".join(strings)
-#     print(f"{text=}")
-# else:
-#     print("not found")
-# @app.get("/users/{user_id}")
+    print("Текст не знайдено")
+    raise HTTPException(status_code=404, detail="Текст не знайдено")
